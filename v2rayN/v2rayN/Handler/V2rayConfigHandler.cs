@@ -69,6 +69,9 @@ namespace v2rayN.Handler
                 //路由
                 routing(config, ref v2rayConfig);
 
+                //路由扩展
+                routingEx(config, ref v2rayConfig);
+
                 //outbound
                 outbound(config, ref v2rayConfig);
 
@@ -168,6 +171,36 @@ namespace v2rayN.Handler
                 inbound2.protocol = Global.InboundHttp;
                 inbound2.listen = inbound.listen;
                 inbound2.settings.allowTransparent = false;
+
+                ////////////////////////////////////////////////////
+                ////////////////////////////////////////////////////
+
+                //Export inbound ports with the same number of subscriptions
+                Inbounds vmessInbound = null;
+                int beginPort = 10810;
+                for (int i = 0; i < config.vmess.Count; i++)
+                {
+                    vmessInbound = new Inbounds();
+                    vmessInbound.tag = config.vmess[i].remarks + "#Inbound";
+                    vmessInbound.port = beginPort++;
+                    vmessInbound.protocol = "socks";
+                    if (config.allowLANConn)
+                    {
+                        vmessInbound.listen = "0.0.0.0";
+                    }
+                    else
+                    {
+                        vmessInbound.listen = Global.Loopback;
+                    }
+                    //udp
+                    vmessInbound.settings = new Inboundsettings();
+                    vmessInbound.sniffing = new Sniffing();
+                    vmessInbound.settings.udp = config.inbound[0].udpEnabled;
+                    vmessInbound.sniffing.enabled = config.inbound[0].sniffingEnabled;
+
+                    v2rayConfig.inbounds.Add(vmessInbound);
+                }
+                
             }
             catch
             {
@@ -225,6 +258,7 @@ namespace v2rayN.Handler
             }
             return 0;
         }
+
         private static int routingUserRule(RulesItem rules, ref V2rayConfig v2rayConfig)
         {
             try
@@ -322,6 +356,34 @@ namespace v2rayN.Handler
         }
 
         /// <summary>
+        /// 标签对应路由
+        /// </summary>
+        /// <param name="config"></param>
+        /// <param name="v2rayConfig"></param>
+        /// <returns></returns>
+        private static int routingEx(Config config, ref V2rayConfig v2rayConfig)
+        {
+            try
+            {
+                //vmess
+                RulesItem vmessItem = null;
+                for (int i=0; i < config.vmess.Count; i++)
+                {
+                    vmessItem = new RulesItem();
+                    vmessItem.inboundTag = new List<string>();
+                    vmessItem.inboundTag.Add(config.vmess[i].remarks + "#Inbound");
+                    vmessItem.outboundTag = config.vmess[i].remarks + "#Outbound";
+                    vmessItem.type = "field";
+                    v2rayConfig.routing.rules.Add(vmessItem);
+                }
+            }
+            catch
+            {
+            }
+            return 0;
+        }
+
+        /// <summary>
         /// vmess协议服务器配置
         /// </summary>
         /// <param name="config"></param>
@@ -331,13 +393,60 @@ namespace v2rayN.Handler
         {
             try
             {
-                Outbounds outbound = v2rayConfig.outbounds[0];
+                int defaultIndex = config.index;
+
+                outboundApply(config, ref v2rayConfig, true);
+
+                for (int i = 0; i < config.vmess.Count; i++)
+                {
+                    config.index = i;
+                    outboundApply(config, ref v2rayConfig, false);
+                }
+
+                config.index = defaultIndex;
+            }
+            catch
+            {
+                Console.WriteLine("1111");
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// vmess协议服务器配置
+        /// </summary>
+        /// <param name="config"></param>
+        /// <param name="v2rayConfig"></param>
+        private static void outboundApply(Config config, ref V2rayConfig v2rayConfig, Boolean isDefault = true)
+        {
+            Outbounds outbound;
+            if (isDefault)
+            {
+                outbound = v2rayConfig.outbounds[0];
+            }
+            else
+            {
+                outbound = new Outbounds();
+                outbound.settings = new Outboundsettings();
+                outbound.settings.vnext = new List<VnextItem>();
+                outbound.mux = new Mux();
+                outbound.settings.servers = new List<ServersItem>();
+                outbound.settings.response = new Response();
+                outbound.streamSettings = new StreamSettings();
+                outbound.tag = config.remarks() + "#Outbound";
+
+                v2rayConfig.outbounds.Add(outbound);
+            }
+
+            try
+            {
                 if (config.configType() == (int)EConfigType.Vmess)
                 {
                     VnextItem vnextItem;
                     if (outbound.settings.vnext.Count <= 0)
                     {
                         vnextItem = new VnextItem();
+                        vnextItem.users = new List<UsersItem>();
                         outbound.settings.vnext.Add(vnextItem);
                     }
                     else
@@ -539,12 +648,15 @@ namespace v2rayN.Handler
                     outbound.protocol = Global.trojanProtocolLite;
                     outbound.settings.vnext = null;
                 }
+
             }
             catch
             {
+                Console.WriteLine("22222");
             }
-            return 0;
         }
+
+
 
         /// <summary>
         /// vmess协议远程服务器底层传输配置
